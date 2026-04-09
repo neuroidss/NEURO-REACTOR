@@ -4,9 +4,9 @@ import path from 'path';
 import {defineConfig, loadEnv} from 'vite';
 
 export default defineConfig(({mode}) => {
-  base: '/NEURO-REACTOR/';
   const env = loadEnv(mode, '.', '');
   return {
+    base: '/NEURO-REACTOR/',
     plugins: [react(), tailwindcss()],
     define: {
       'process.env.GEMINI_API_KEY': JSON.stringify(env.GEMINI_API_KEY),

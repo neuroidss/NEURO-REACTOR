@@ -1,5 +1,7 @@
 {
-  "name": "",
-  "description": "",
-  "requestFramePermissions": []
+  "name": "Neuro Reactor",
+  "description": "A brain-computer interface game using Web Bluetooth and EEG.",
+  "requestFramePermissions": [
+    "bluetooth"
+  ]
 }
