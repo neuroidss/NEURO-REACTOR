@@ -1,185 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
-
-const RADIUS = 10;
-const BUF_SIZE = 256;
-const ANGLES = [-72, -36, 36, 72, 108, 144, -144, -108].map(d => d * Math.PI / 180);
-const ELECTRODES = ANGLES.map(a => ({ x: Math.cos(a) * RADIUS, y: Math.sin(a) * RADIUS }));
-const UV_SCALE = (1.2 / 4.0 / 8388607.0) * 1e6;
-
-// === ТЕТА-ГАММА PAC (АСИММЕТРИЯ) ===
-const THETA_BIN = 6;
-const NUM_SLOTS = 8;
-
-const PAIRS = [];
-const PAIR_MIDS = [];
-for (let i = 0; i < 8; i++) {
-  for (let j = i + 1; j < 8; j++) {
-    PAIRS.push([i, j]);
-    let mx = (ELECTRODES[i].x + ELECTRODES[j].x) / 2;
-    let my = (ELECTRODES[i].y + ELECTRODES[j].y) / 2;
-    PAIR_MIDS.push({ x: mx, y: my });
-  }
-}
-
-function fft(re, im) {
-  const n = re.length;
-  for (let i = 0, j = 0; i < n; i++) {
-    if (j > i) {
-      [re[i], re[j]] = [re[j], re[i]];
-      [im[i], im[j]] = [im[j], im[i]];
-    }
-    let m = n >> 1;
-    while (m >= 1 && j >= m) {
-      j -= m;
-      m >>= 1;
-    }
-    j += m;
-  }
-  for (let s = 2; s <= n; s <<= 1) {
-    let m = s >> 1, t = -2 * Math.PI / s, wr = Math.cos(t), wi = Math.sin(t);
-    for (let i = 0; i < n; i += s) {
-      let ar = 1, ai = 0;
-      for (let j = 0; j < m; j++) {
-        let u = i + j, v = u + m;
-        let tr = ar * re[v] - ai * im[v], ti = ar * im[v] + ai * re[v];
-        re[v] = re[u] - tr; im[v] = im[u] - ti; re[u] += tr; im[u] += ti;
-        [ar, ai] = [ar * wr - ai * wi, ar * wi + ai * wr];
-      }
-    }
-  }
-}
-
-function applyNotchFilters(re, im) {
-  for (let k of [51, 102]) {
-    for (let i = -1; i <= 1; i++) {
-      if (re[k + i] !== undefined) re[k + i] = im[k + i] = 0;
-    }
-  }
-}
-
-class NeuroReactorAudio {
-  constructor() {
-    this.ctx = new (window.AudioContext || window.webkitAudioContext)();
-    this.masterGain = this.ctx.createGain();
-    this.masterGain.connect(this.ctx.destination);
-    this.voices = ELECTRODES.map((pos, i) => {
-      let osc = this.ctx.createOscillator();
-      let gain = this.ctx.createGain();
-      let pan = this.ctx.createStereoPanner();
-      osc.type = 'triangle';
-      osc.frequency.value = 40 + i * 10;
-      gain.gain.value = 0;
-      pan.pan.value = pos.x / RADIUS;
-      osc.connect(gain).connect(pan).connect(this.masterGain);
-      osc.start();
-      return { osc, gain, baseFreq: 40 + i * 10 };
-    });
-  }
-  update(vx, vy, tq, stability, electrodePressure) {
-    if (this.ctx.state === 'suspended') this.ctx.resume();
-    const t = this.ctx.currentTime;
-    this.voices.forEach((v, i) => {
-      let targetGain = (electrodePressure[i] / 15) * (0.2 + stability * 0.8);
-      v.gain.gain.setTargetAtTime(targetGain * 0.3, t, 0.1);
-      v.osc.frequency.setTargetAtTime(v.baseFreq + (vx + vy) * 10 + tq * 15, t, 0.1);
-    });
-  }
-}
-
-class Maze {
-  constructor(dim) {
-    this.dim = dim;
-    this.optimalDist = 0;
-    this.chests = [];
-    this.orbs = [];
-    this.grid = Array.from({ length: dim }, () => Array(dim).fill(1));
-    let attempts = 0, isValid = false, bestExit = null, bestGrid = null;
-
-    while (!isValid && attempts < 200) {
-      attempts++;
-      this.grid = Array.from({ length: dim }, () => Array(dim).fill(1));
-      this.gen(1, 1);
-
-      let exitParams = this.findHardestExit();
-      if (!bestExit || (exitParams.d + exitParams.turns > bestExit.d + bestExit.turns)) {
-        bestExit = exitParams;
-        bestGrid = this.grid.map(row => [...row]);
-      }
-      if (exitParams.d >= 20 && exitParams.turns >= 5) { isValid = true; }
-    }
-
-    this.grid = bestGrid;
-    this.grid[bestExit.y][bestExit.x] = 2;
-    this.optimalDist = bestExit.d;
-
-    for (let y = 1; y < dim - 1; y++) {
-      for (let x = 1; x < dim - 1; x++) {
-        if (this.grid[y][x] === 0 && (x !== 1 || y !== 1)) {
-          let walls = 0;
-          if (this.grid[y + 1][x] === 1) walls++;
-          if (this.grid[y - 1][x] === 1) walls++;
-          if (this.grid[y][x + 1] === 1) walls++;
-          if (this.grid[y][x - 1] === 1) walls++;
-
-          if (walls >= 3) {
-            this.chests.push({
-              x: x + 0.5,
-              y: y + 0.5,
-              isMimic: Math.random() > 0.5,
-              state: 'closed',
-              scanProgress: 0,
-              isTargeted: false
-            });
-          } else if (Math.random() < 0.15) {
-            // 15% chance to spawn an energy orb in empty corridors
-            this.orbs.push({
-              x: x + 0.5,
-              y: y + 0.5,
-              collected: false
-            });
-          }
-        }
-      }
-    }
-  }
-
-  gen(x, y) {
-    this.grid[y][x] = 0;
-    [[0, 1], [0, -1], [1, 0], [-1, 0]].sort(() => Math.random() - 0.5).forEach(([dx, dy]) => {
-      let nx = x + dx * 2, ny = y + dy * 2;
-      if (nx > 0 && nx < this.dim - 1 && ny > 0 && ny < this.dim - 1 && this.grid[ny][nx] === 1) {
-        this.grid[y + dy][x + dx] = 0; this.gen(nx, ny);
-      }
-    });
-  }
-
-  findHardestExit() {
-    let q = [{ x: 1, y: 1, d: 0, dx: 0, dy: 0, turns: 0 }];
-    let visited = Array.from({ length: this.dim }, () => Array(this.dim).fill(false));
-    visited[1][1] = true;
-    let best = { x: 1, y: 1, d: 0, turns: 0 }, maxScore = 0;
-
-    while (q.length > 0) {
-      let curr = q.shift();
-      let score = curr.d + curr.turns * 3;
-      if (score > maxScore && (curr.x !== 1 || curr.y !== 1)) {
-        maxScore = score; best = curr;
-      }
-
-      [[0, 1], [0, -1], [1, 0], [-1, 0]].forEach(([dx, dy]) => {
-        let nx = curr.x + dx, ny = curr.y + dy;
-        if (nx > 0 && nx < this.dim - 1 && ny > 0 && ny < this.dim - 1) {
-          if (!visited[ny][nx] && this.grid[ny][nx] === 0) {
-            visited[ny][nx] = true;
-            let isTurn = (curr.dx !== 0 || curr.dy !== 0) && (curr.dx !== dx || curr.dy !== dy);
-            q.push({ x: nx, y: ny, d: curr.d + 1, dx: dx, dy: dy, turns: curr.turns + (isTurn ? 1 : 0) });
-          }
-        }
-      });
-    }
-    return best;
-  }
-}
+import { BUF_SIZE, ANGLES, RADIUS, ELECTRODES, UV_SCALE, THETA_BIN, NUM_SLOTS, fft, applyNotchFilters, get_ciPLV, get_band_ciPLV } from './lib/eeg-math';
+import { Maze } from './lib/maze';
+import { NeuroReactorAudio } from './lib/audio';
 
 export default function App() {
   const canvasRef = useRef(null);
@@ -266,20 +88,6 @@ export default function App() {
       if (reqRef.current) cancelAnimationFrame(reqRef.current);
     };
   }, []);
-
-  const get_ciPLV = (idxA, idxB) => {
-    let sum_re = 0, sum_im = 0;
-    for (let k = 18; k <= 36; k++) {
-      let mA = Math.sqrt(state.current.reArr[idxA][k] ** 2 + state.current.imArr[idxA][k] ** 2) || 1e-6;
-      let mB = Math.sqrt(state.current.reArr[idxB][k] ** 2 + state.current.imArr[idxB][k] ** 2) || 1e-6;
-      let uAr = state.current.reArr[idxA][k] / mA, uAi = state.current.imArr[idxA][k] / mA,
-          uBr = state.current.reArr[idxB][k] / mB, uBi = -state.current.imArr[idxB][k] / mB;
-      sum_re += (uAr * uBr - uAi * uBi);
-      sum_im += (uAr * uBi + uAi * uBr);
-    }
-    let mRe = sum_re / 19, mIm = sum_im / 19, denom = Math.sqrt(Math.max(0, 1.0 - mRe * mRe));
-    return denom < 0.001 ? 0 : mIm / denom;
-  };
 
   const takeDamage = () => {
     state.current.scorePenalty += 500;
@@ -411,8 +219,8 @@ export default function App() {
     let ch_fast = new Float32Array(8);
     
     for(let c=0; c<8; c++) {
-      let past_slow = s.slow_gamma_slots[c][1] + s.slow_gamma_slots[c][2] + s.slow_gamma_slots[c][3];
-      let future_fast = s.fast_gamma_slots[c][4] + s.fast_gamma_slots[c][5] + s.fast_gamma_slots[c][6];
+      let past_slow = Math.abs(s.slow_gamma_slots[c][1] + s.slow_gamma_slots[c][2] + s.slow_gamma_slots[c][3]);
+      let future_fast = Math.abs(s.fast_gamma_slots[c][4] + s.fast_gamma_slots[c][5] + s.fast_gamma_slots[c][6]);
       ch_slow[c] = past_slow;
       ch_fast[c] = future_fast;
       if (past_slow > max_slow_ch) max_slow_ch = past_slow;
@@ -565,7 +373,7 @@ export default function App() {
       s.target_vx = 0; s.target_vy = 0; s.target_tq = 0; s.electrodePressure.fill(0);
       for (let i = 0; i < 8; i++) {
         for (let j = i + 1; j < 8; j++) {
-          let val = get_ciPLV(i, j);
+          let val = get_ciPLV(s.reArr, s.imArr, i, j);
           let dx = ELECTRODES[j].x - ELECTRODES[i].x, dy = ELECTRODES[j].y - ELECTRODES[i].y;
           s.target_vx += val * dx; s.target_vy += val * dy;
           s.target_tq += (val * (ELECTRODES[i].x * dy - ELECTRODES[i].y * dx)) / (RADIUS * 10);
@@ -595,35 +403,40 @@ export default function App() {
         let normalized_phase = (phase + Math.PI) / (2 * Math.PI);
         let slot = Math.floor(normalized_phase * NUM_SLOTS) % NUM_SLOTS;
 
-        let slow_g = 0;
-        for(let k=31; k<=51; k++) slow_g += Math.sqrt(s.reArr[c][k]**2 + s.imArr[c][k]**2);
-        slow_g /= 21;
+        let slow_flow = 0;
+        let fast_flow = 0;
 
-        let fast_g = 0;
-        for(let k=61; k<=102; k++) fast_g += Math.sqrt(s.reArr[c][k]**2 + s.imArr[c][k]**2);
-        fast_g /= 42;
+        for (let j = 0; j < 8; j++) {
+          if (c === j) continue;
+          let i = Math.min(c, j);
+          let k = Math.max(c, j);
+          let sign = (c === i) ? 1 : -1;
+          
+          let slow_val = get_band_ciPLV(s.reArr, s.imArr, i, k, 31, 51);
+          let fast_val = get_band_ciPLV(s.reArr, s.imArr, i, k, 61, 102);
+          
+          slow_flow += slow_val * sign;
+          fast_flow += fast_val * sign;
+        }
 
-        s.slow_gamma_slots[c][slot] = s.slow_gamma_slots[c][slot] * 0.9 + slow_g * 0.1;
-        s.fast_gamma_slots[c][slot] = s.fast_gamma_slots[c][slot] * 0.9 + fast_g * 0.1;
+        // БЕЗ СГЛАЖИВАНИЯ (MAX REALTIME)
+        s.slow_gamma_slots[c][slot] = slow_flow;
+        s.fast_gamma_slots[c][slot] = fast_flow;
 
         // Оценка асимметрии: Медленная гамма в прошлом (слоты 1,2,3), Быстрая в будущем (слоты 4,5,6)
         let past_slow = s.slow_gamma_slots[c][1] + s.slow_gamma_slots[c][2] + s.slow_gamma_slots[c][3];
-        let total_slow = s.slow_gamma_slots[c].reduce((a,b)=>a+b, 0);
         let future_fast = s.fast_gamma_slots[c][4] + s.fast_gamma_slots[c][5] + s.fast_gamma_slots[c][6];
-        let total_fast = s.fast_gamma_slots[c].reduce((a,b)=>a+b, 0);
 
-        let slow_ratio = total_slow > 0 ? past_slow / total_slow : 0;
-        let fast_ratio = total_fast > 0 ? future_fast / total_fast : 0;
-
-        let validity = (slow_ratio * fast_ratio) * 4.0;
+        let validity = Math.abs(past_slow) + Math.abs(future_fast);
         global_intent += validity;
 
         // Вектор Намерения (Population Vector Coding) на основе Быстрой Гаммы (Будущего)
         fast_vec_x += future_fast * ELECTRODES[c].x;
         fast_vec_y += future_fast * ELECTRODES[c].y;
         
-        if (future_fast > max_fast_future) max_fast_future = future_fast;
-        sum_fast_future += future_fast;
+        let abs_fast = Math.abs(future_fast);
+        if (abs_fast > max_fast_future) max_fast_future = abs_fast;
+        sum_fast_future += abs_fast;
       }
       global_intent /= 8; // Усредняем по 8 каналам
       
@@ -631,15 +444,11 @@ export default function App() {
       let mean_fast_future = sum_fast_future / 8;
       // If max is much higher than mean, sharpness is high (1 channel dominates). If max == mean, sharpness is 0 (diffuse).
       let current_sharpness = mean_fast_future > 0 ? ((max_fast_future / mean_fast_future) - 1) / 7 : 0; 
-      s.sharpness = s.sharpness * 0.9 + current_sharpness * 0.1;
-
-      s.smooth_focus = s.smooth_focus * 0.9 + global_intent * 0.1;
       
-      // Сглаживаем угол вектора намерения
-      let target_angle = Math.atan2(fast_vec_y, fast_vec_x);
-      // Shortest path angle interpolation
-      let angle_diff = Math.atan2(Math.sin(target_angle - s.intent_angle), Math.cos(target_angle - s.intent_angle));
-      s.intent_angle += angle_diff * 0.1;
+      // БЕЗ СГЛАЖИВАНИЯ (MAX REALTIME)
+      s.sharpness = current_sharpness;
+      s.smooth_focus = global_intent;
+      s.intent_angle = Math.atan2(fast_vec_y, fast_vec_x);
 
       // 3. ЛОГИКА ВЗЛОМА СУНДУКОВ
       for (let chest of s.maze.chests) {
@@ -840,15 +649,15 @@ export default function App() {
         val += Math.sin(t * 6 * Math.PI * 2) * 20; // Тета-волна (6 Гц)
         
         if (is_focused) {
-          // Симуляция асимметрии: Медленная гамма (40 Гц) до пика, Быстрая (80 Гц) после пика
+          let electrode_angle = Math.atan2(ELECTRODES[i].y, ELECTRODES[i].x);
+          // Симуляция асимметрии: Медленная гамма до пика, Быстрая после пика (широкополосная для фазовой когерентности)
           if (theta_phase > -Math.PI/2 && theta_phase < 0) {
-            val += Math.sin(t * 40 * Math.PI * 2) * 15; // Прошлое (везде одинаково)
+            for(let f=31; f<=51; f+=5) val += Math.sin(t * f * Math.PI * 2 + electrode_angle) * 5; // Прошлое
           } else if (theta_phase > 0 && theta_phase < Math.PI/2) {
             // Будущее (Быстрая гамма) строго направлено!
-            let electrode_angle = Math.atan2(ELECTRODES[i].y, ELECTRODES[i].x);
             let angle_match = Math.cos(electrode_angle - sim_intent_angle);
             if (angle_match > 0) {
-              val += Math.sin(t * 80 * Math.PI * 2) * 35 * angle_match; // Усилил сигнал для четкого вектора
+              for(let f=61; f<=102; f+=5) val += Math.sin(t * f * Math.PI * 2 + electrode_angle) * 8 * angle_match;
             }
           }
         }
