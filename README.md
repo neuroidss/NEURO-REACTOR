@@ -55,7 +55,7 @@ The algorithms and frequency bands used in Neuro-Reactor are grounded in neuroph
 
 1. **Motor Intent & Coherence (18-36 Hz):** 
    Continuous motor control and corticomuscular interaction are strongly mediated by coherence in the High Beta and Lower Gamma bands, rather than just classical Mu-rhythm desynchronization.
-   - *Schoffelen, J. M., Oostenveld, R., & Fries, P. (2005). Neuronal coherence as a mechanism of effective corticospinal interaction. Science.* **DOI: 10.1126/science.1113230**
+   - *Schoffelen, J. M., Oostenveld, R., & Fries, P. (2005). Neuronal coherence as a mechanism of effective corticospinal interaction. Science.* **DOI: 10.1126/science.1107027**
    - *Pfurtscheller, G., & Lopes da Silva, F. H. (1999). Event-related EEG/MEG synchronization and desynchronization: basic principles. Clinical neurophysiology.* **DOI: 10.1016/s1388-2457(99)00141-8**
 
 2. **Working Memory & Spatial Attention (Theta-Gamma PAC):** 

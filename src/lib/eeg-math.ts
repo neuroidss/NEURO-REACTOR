@@ -50,7 +50,7 @@ export function applyNotchFilters(re: Float32Array, im: Float32Array) {
  * Used for Motor Intent decoding (Beta/Lower Gamma 18-36 Hz).
  * 
  * Scientific Basis: Neuronal coherence as a mechanism of effective corticospinal interaction.
- * DOI: 10.1126/science.1113230
+ * DOI: 10.1126/science.1107027
  */
 export function get_ciPLV(reArr: Float32Array[], imArr: Float32Array[], i: number, j: number) {
   return get_band_ciPLV(reArr, imArr, i, j, 18, 36);
