@@ -1,11 +1,27 @@
 export const BUF_SIZE = 256;
 export const ANGLES = [-72, -36, 36, 72, 108, 144, -144, -108].map(d => d * Math.PI / 180);
-export const RADIUS = 1.0;
+export const RADIUS = 10.0;
 export const ELECTRODES = ANGLES.map(a => ({ x: Math.cos(a) * RADIUS, y: Math.sin(a) * RADIUS }));
 export const UV_SCALE = (1.2 / 4.0 / 8388607.0) * 1e6;
 
 export const THETA_BIN = 6; // ~6Hz
-export const NUM_SLOTS = 8; // 8 фазовых слотов для теты
+export const GAMMA_BIN = 80;
+export const NUM_PAIRS = 28;
+export const NUM_SLOTS = 7; // 7 phase slots from crystal
+export const WM_DECAY = 0.96;
+export const REF_CH = 0;
+
+export const PAIRS: number[][] = [];
+export const PAIR_MIDS: {x: number, y: number}[] = [];
+
+for (let i = 0; i < 8; i++) {
+    for (let j = i + 1; j < 8; j++) {
+        PAIRS.push([i, j]);
+        let mx = (ELECTRODES[i].x + ELECTRODES[j].x) / 2;
+        let my = (ELECTRODES[i].y + ELECTRODES[j].y) / 2;
+        PAIR_MIDS.push({x: mx, y: my});
+    }
+}
 
 export function fft(re: Float32Array, im: Float32Array) {
   let n = re.length;

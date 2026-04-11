@@ -47,14 +47,14 @@ To help the brain recognize its own states, the app features real-time sonificat
 ## Movement Modes (Scientific Basis)
 Neuro-Reactor supports 4 distinct mathematical modes for decoding motor intent from the micro-array. You can toggle these in the UI (👁️ button):
 
-1. **ABSOLUTE (ENERGY)** - *Default Fallback*
-   - Uses the absolute magnitude of ciPLV. Ignores the direction of the cortical traveling wave.
-   - **Mechanism:** Measures the raw energy of local phase synchronization. Highly robust against micro-shifts in electrode placement.
-   - **DOI:** 10.1126/science.1107027 (Schoffelen et al., 2005)
+1. **CRYSTAL (DEFAULT)** - *Legacy Mode*
+   - The exact logic from the original `neuro_dungeon_gamepad_emulator_crystal`.
+   - **Mechanism:** Uses **signed** ciPLV values for movement vectors (sensitive to local dipoles/anatomy) but absolute values for electrode pressure. Highly responsive to the direction of the cortical traveling wave.
 
-2. **SIGNED (RAW DIPOLES)**
-   - Uses the raw signed ciPLV.
-   - **Mechanism:** Maps the anatomical direction of the local cortical traveling wave directly to X/Y coordinates. Sensitive to gyri/sulci orientation.
+2. **TRUE ABSOLUTE**
+   - Uses the absolute magnitude of ciPLV for both vectors and pressure.
+   - **Mechanism:** Measures the raw energy of local phase synchronization. Ignores the direction of the cortical traveling wave. Highly robust against micro-shifts in electrode placement, but may feel less directional than CRYSTAL.
+   - **DOI:** 10.1126/science.1107027 (Schoffelen et al., 2005)
 
 3. **HYBRID (ENERGY + SPIRALS)**
    - Uses absolute ciPLV for forward/backward movement (Energy), but signed ciPLV for rotation (Torque).
@@ -66,15 +66,41 @@ Neuro-Reactor supports 4 distinct mathematical modes for decoding motor intent f
    - **Mechanism:** Decodes the macroscopic routing of information. Top-down waves (expectations/intent) drive forward, bottom-up waves drive backward.
    - **DOI:** 10.1371/journal.pbio.3000487 (Alamia & VanRullen, 2019)
 
+## Working Memory Modes (Scientific Basis)
+Neuro-Reactor supports 3 mathematical modes for decoding spatial attention and working memory from the micro-array. You can toggle these in the UI (🧠 button):
+
+1. **PAC PAIRS (CRYSTAL)** - *Default*
+   - Calculates Phase-Amplitude Coupling (PAC) between a global Theta phase and Gamma amplitude across all 28 possible electrode pairs.
+   - **Mechanism:** The theta-gamma neural code. The brain multiplexes spatial targets into discrete theta phase slots.
+   - **DOI:** 10.1016/j.neuron.2013.03.007 (Lisman & Jensen, 2013)
+
+2. **PAC FLOW (ASYMMETRY)**
+   - Analyzes the asymmetry of information flow. Slow Gamma (31-51Hz) on the descending Theta phase (Past), Fast Gamma (61-102Hz) on the ascending phase (Future).
+   - **Mechanism:** Routing of information via theta-gamma coupling. The brain predicts the future target using fast gamma bursts.
+   - **DOI:** 10.1038/s41467-019-13638-1 (Bastos et al., 2020)
+
+3. **AAC ENVELOPE**
+   - Uses Amplitude-Amplitude Coupling (AAC) between Theta and Gamma envelopes.
+   - **Mechanism:** A simpler correlation metric where the overall power of Gamma fluctuates with the power of Theta, indicating general cognitive load and attention.
+   - **DOI:** 10.1073/pnas.1006728107 (Shirvalkar et al., 2010)
+
 ## Synaptic Persistence (Hebbian Learning)
 The game features a "Synaptic Stability" meter. Holding a consistent vector triggers simulated Spike-Timing-Dependent Plasticity (STDP), giving the avatar a speed boost.
 - **DOI:** 10.1523/JNEUROSCI.18-24-10464.1998 (Bi & Poo, 1998 - Synaptic plasticity)
 
 ## How to Test
-1. Click **CONNECT BLE** to pair your 8-channel ultra-high-density local EEG module (micro-array).
+1. Click **CONNECT BLE** to pair your 8-channel ultra-high-density local EEG module (FreeEEG8-alpha micro-array).
 2. Use motor intent (Beta/Lower Gamma symmetry, 18-36 Hz) to navigate the maze.
 3. To interact with Orbs or Chests, direct your spatial attention towards them. You will see your "Attention Radar" (magenta polygon) stretch in the direction of your focus.
 4. Achieve high "Sharpness" to lock on and trigger the telekinesis/unlock mechanics.
+
+### Electrode Placement Recommendations (FreeEEG8-alpha)
+The FreeEEG8-alpha is an ultra-high-density micro-array. Its placement significantly affects the decoding of different modes:
+
+- **Pz (Parietal Midline):** *Highly Recommended.* Excellent for spatial attention, working memory (Theta-Gamma PAC), and general motor intent. Provides a balanced signal for most modes.
+- **Cz (Central Midline):** Good for strong motor intent (Beta/Lower Gamma) and the `ABSOLUTE` movement mode. May be less sensitive to spatial working memory tasks compared to Pz.
+- **Oz (Occipital Midline):** Primarily captures visual processing. Useful if you are experimenting with visual evoked potentials or visual attention, but less optimal for pure motor control.
+- **Orientation:** The orientation of the array (e.g., USB cable pointing UP vs. DOWN) will invert the Y-axis of the decoded dipoles. Use the `USB CABLE: TOP/BOTTOM` toggle in the UI to correct this without physically rotating the device.
 
 ## Scientific References & DOIs
 The algorithms and frequency bands used in Neuro-Reactor are grounded in neurophysiological research:
