@@ -1,6 +1,6 @@
 {
-  "name": "Neuro Reactor",
-  "description": "A brain-computer interface game using Web Bluetooth and EEG.",
+  "name": "NEURO-REACTOR",
+  "description": "Neuro-Reactor: Unified BCI Engine for Real-time Neuro-Generative Audio & Control.\nA brain-computer interface game using Web Bluetooth and EEG.\n",
   "requestFramePermissions": [
     "bluetooth"
   ]
