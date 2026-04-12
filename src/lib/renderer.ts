@@ -174,6 +174,26 @@ export function drawScene(ctx: CanvasRenderingContext2D, width: number, height: 
         }
     }
 
+    if (s.moveMode === 'pointer') {
+        let px = s.pointer_world_x * cellSize;
+        let py = s.pointer_world_y * cellSize;
+        
+        ctx.strokeStyle = '#0f0';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(px - 10, py);
+        ctx.lineTo(px + 10, py);
+        ctx.moveTo(px, py - 10);
+        ctx.lineTo(px, py + 10);
+        ctx.stroke();
+        
+        ctx.strokeStyle = 'rgba(0, 255, 0, 0.3)';
+        ctx.beginPath();
+        ctx.moveTo(s.player.x * cellSize, s.player.y * cellSize);
+        ctx.lineTo(px, py);
+        ctx.stroke();
+    }
+
     for (let bot of s.bots) {
       ctx.save();
       ctx.translate(bot.x * cellSize, bot.y * cellSize);

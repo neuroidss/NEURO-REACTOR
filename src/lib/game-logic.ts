@@ -37,12 +37,9 @@ export function processEEGData(s: any, time: number, takeDamage: () => void) {
                 // The exact logic from neuro_dungeon_gamepad_emulator_crystal
                 move_val = raw_val;
                 tq_val = raw_val;
-            } else if (s.moveMode === 'absolute') {
-                move_val = Math.abs(raw_val);
-                tq_val = raw_val; // Rotation must be signed to be controllable
-            } else if (s.moveMode === 'hybrid') {
-                move_val = Math.abs(raw_val);
-                tq_val = raw_val;
+            } else if (s.moveMode === 'pointer') {
+                move_val = 0; // Handled by Center of Mass later
+                tq_val = 0;   // No rotation in pointer mode
             } else if (s.moveMode === 'traveling_wave') {
                 move_val = Math.abs(raw_val);
                 tq_val = raw_val; // Fix rotation to be signed and controllable
@@ -60,6 +57,41 @@ export function processEEGData(s: any, time: number, takeDamage: () => void) {
         let flow_dir = global_flow >= 0 ? 1 : -1;
         s.target_vx *= flow_dir;
         s.target_vy *= flow_dir;
+    } else if (s.moveMode === 'pointer') {
+        // Center of Mass logic
+        let sum_pressure = 0;
+        let com_x = 0, com_y = 0;
+        for (let i = 0; i < 8; i++) {
+            sum_pressure += s.electrodePressure[i];
+            com_x += s.electrodePressure[i] * ELECTRODES[i].x;
+            com_y += s.electrodePressure[i] * ELECTRODES[i].y;
+        }
+        if (sum_pressure > 0) {
+            com_x /= sum_pressure;
+            com_y /= sum_pressure;
+        }
+        
+        // com_x is in [-RADIUS, RADIUS]. Normalize to [-1, 1]
+        let norm_x = com_x / RADIUS;
+        let norm_y = com_y / RADIUS;
+        
+        // Amplify to make it reach the edges easily (CoM rarely reaches the exact edge)
+        norm_x *= 3.0;
+        norm_y *= 3.0;
+        
+        // Clamp to a circle of radius 1
+        let dist = Math.sqrt(norm_x**2 + norm_y**2);
+        if (dist > 1.0) {
+            norm_x /= dist;
+            norm_y /= dist;
+        }
+        
+        s.raw_pointer_x = norm_x;
+        s.raw_pointer_y = norm_y;
+        
+        s.target_vx = 0; // Handled in updatePhysics
+        s.target_vy = 0;
+        s.target_tq = 0;
     }
 
     let mag = Math.sqrt(s.target_vx ** 2 + s.target_vy ** 2);
@@ -318,6 +350,38 @@ export function processEEGData(s: any, time: number, takeDamage: () => void) {
 export function updatePhysics(s: any, invertDevice: boolean, takeDamage: () => void) {
     let out_vx = invertDevice ? -s.target_vx : s.target_vx;
     let out_vy = invertDevice ? -s.target_vy : s.target_vy;
+
+    if (s.moveMode === 'pointer') {
+        let px = invertDevice ? -s.raw_pointer_x : s.raw_pointer_x;
+        let py = invertDevice ? -s.raw_pointer_y : s.raw_pointer_y;
+        
+        let cx = 0, cy = 0;
+        let world_radius = 10;
+        if (s.demoMode === 'maze' && s.maze) {
+            cx = s.maze.dim / 2;
+            cy = s.maze.dim / 2;
+            world_radius = s.maze.dim / 2;
+        } else if (s.demoMode === 'drone') {
+            world_radius = 15;
+        }
+        
+        let reach = world_radius * (s.skillLevel / 0.05); // scale by sensitivity
+        
+        s.pointer_world_x = cx + px * reach;
+        s.pointer_world_y = cy + py * reach;
+        
+        let dx = s.pointer_world_x - s.player.x;
+        let dy = s.pointer_world_y - s.player.y;
+        let dist = Math.sqrt(dx*dx + dy*dy);
+        
+        if (dist > 0.5) {
+            out_vx = dx / dist;
+            out_vy = dy / dist;
+        } else {
+            out_vx = 0;
+            out_vy = 0;
+        }
+    }
 
     let smooth = 0.98 - (s.skillLevel * 0.1), gain = s.skillLevel * 1.5;
     

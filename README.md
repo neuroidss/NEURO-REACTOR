@@ -45,23 +45,17 @@ To help the brain recognize its own states, the app features real-time sonificat
 - When the Population Vector successfully locks onto an interactable object, the frequency shifts to a resonant 432Hz, providing instant reward and confirmation to the neural networks.
 
 ## Movement Modes (Scientific Basis)
-Neuro-Reactor supports 4 distinct mathematical modes for decoding motor intent from the micro-array. You can toggle these in the UI (👁️ button):
+Neuro-Reactor supports 3 distinct mathematical modes for decoding motor intent from the micro-array. You can toggle these in the UI (👁️ button):
 
 1. **CRYSTAL (DEFAULT)** - *Legacy Mode*
    - The exact logic from the original `neuro_dungeon_gamepad_emulator_crystal`.
    - **Mechanism:** Uses **signed** ciPLV values for movement vectors (sensitive to local dipoles/anatomy) but absolute values for electrode pressure. Highly responsive to the direction of the cortical traveling wave.
 
-2. **TRUE ABSOLUTE**
-   - Uses the absolute magnitude of ciPLV for both vectors and pressure.
-   - **Mechanism:** Measures the raw energy of local phase synchronization. Ignores the direction of the cortical traveling wave. Highly robust against micro-shifts in electrode placement, but may feel less directional than CRYSTAL.
-   - **DOI:** 10.1126/science.1107027 (Schoffelen et al., 2005)
+2. **POINTER (MOUSE)**
+   - Calculates the spatial Center of Mass (CoM) of the absolute coherence network (electrode pressure).
+   - **Mechanism:** Maps the physical distribution of brain synchronization directly to a 2D coordinate on the screen. Acts as an absolute pointing device (like a mouse) rather than a velocity joystick. The avatar will attempt to walk towards the targeted point.
 
-3. **HYBRID (ENERGY + SPIRALS)**
-   - Uses absolute ciPLV for forward/backward movement (Energy), but signed ciPLV for rotation (Torque).
-   - **Mechanism:** Decodes Phase Singularities (cortical spirals). The brain learns to "spin" the local phase field to turn the avatar.
-   - **DOI:** 10.1038/nrn.2018.20 (Muller et al., 2018 - Cortical traveling waves and spirals)
-
-4. **WAVE (TOP-DOWN / BOTTOM-UP)**
+3. **WAVE (TOP-DOWN / BOTTOM-UP)**
    - Uses absolute ciPLV for movement magnitude, but calculates a "Global Flow" direction from the sum of all signs to act as a forward/reverse gearbox.
    - **Mechanism:** Decodes the macroscopic routing of information. Top-down waves (expectations/intent) drive forward, bottom-up waves drive backward.
    - **DOI:** 10.1371/journal.pbio.3000487 (Alamia & VanRullen, 2019)

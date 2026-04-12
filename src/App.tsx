@@ -303,12 +303,14 @@ export default function App() {
         // 1. АВТОПИЛОТ (Движение)
         let electrode_angle = Math.atan2(ELECTRODES[i].y, ELECTRODES[i].x);
         
-        if (state.current.moveMode === 'crystal' || state.current.moveMode === 'absolute') {
+        if (state.current.moveMode === 'crystal') {
             // Плоская бегущая волна (диполь) вдоль оси X
             val += Math.sin(t * 20 * Math.PI * 2 + ELECTRODES[i].x * 0.5) * 15;
-        } else if (state.current.moveMode === 'hybrid') {
-            // Спиральная волна (вращение)
-            val += Math.sin(t * 20 * Math.PI * 2 + electrode_angle) * 15;
+        } else if (state.current.moveMode === 'pointer') {
+            // Центр масс смещен (например, вправо-вверх)
+            if (ELECTRODES[i].x > 0 && ELECTRODES[i].y > 0) {
+                val += Math.sin(t * 20 * Math.PI * 2) * 25;
+            }
         } else if (state.current.moveMode === 'traveling_wave') {
             // Радиальная волна (от центра к краям)
             let r = Math.sqrt(ELECTRODES[i].x**2 + ELECTRODES[i].y**2);
@@ -496,12 +498,12 @@ export default function App() {
         </div>
 
         <button onClick={() => { 
-          const modes = ['crystal', 'absolute', 'hybrid', 'traveling_wave'];
+          const modes = ['crystal', 'pointer', 'traveling_wave'];
           const newMode = modes[(modes.indexOf(state.current.moveMode) + 1) % modes.length];
           state.current.moveMode = newMode;
           setMoveModeState(newMode);
         }} className={`w-full mt-2 py-2 px-4 border-2 rounded-lg font-mono transition-colors text-xs ${moveModeState === 'crystal' ? 'bg-black text-[#0f0] border-[#0f0] shadow-[0_0_10px_#0f0]' : 'bg-black text-[#f0f] border-[#f0f] shadow-[0_0_10px_#f0f]'}`}>
-          MOVE MODE: {moveModeState === 'crystal' ? 'CRYSTAL (DEFAULT)' : moveModeState === 'absolute' ? 'TRUE ABSOLUTE' : moveModeState === 'hybrid' ? 'HYBRID (ENERGY+SPIRALS)' : 'WAVE (TOP-DOWN/BOTTOM-UP)'}
+          MOVE MODE: {moveModeState === 'crystal' ? 'CRYSTAL (DEFAULT)' : moveModeState === 'pointer' ? 'POINTER (MOUSE)' : 'WAVE (TOP-DOWN/BOTTOM-UP)'}
         </button>
         <button onClick={() => { 
           const modes = ['pac_pairs', 'pac_flow', 'aac_envelope', 'dash'];
