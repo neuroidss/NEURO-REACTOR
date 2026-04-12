@@ -22,10 +22,14 @@ export function processEEGData(s: any, time: number, takeDamage: () => void) {
     // 1. АВТОПИЛОТ (БЕТА/НИЖНЯЯ ГАММА)
     s.target_vx = 0; s.target_vy = 0; s.target_tq = 0; s.electrodePressure.fill(0);
     let global_flow = 0;
+    
+    if (!s.debug_ciplv) s.debug_ciplv = new Float32Array(NUM_PAIRS);
+    let p_idx = 0;
 
     for (let i = 0; i < 8; i++) {
         for (let j = i + 1; j < 8; j++) {
             let raw_val = get_ciPLV(s.reArr, s.imArr, i, j);
+            s.debug_ciplv[p_idx++] = raw_val;
             let move_val = raw_val;
             let tq_val = raw_val;
 
@@ -169,6 +173,16 @@ export function processEEGData(s: any, time: number, takeDamage: () => void) {
       global_intent /= 8;
       let mean_fast_future = sum_fast_future / 8;
       current_sharpness = mean_fast_future > 0 ? ((max_fast_future / mean_fast_future) - 1) / 7 : 0; 
+      
+      // Calculate slot_ciplv for visualization (Mandala)
+      for (let p = 0; p < NUM_PAIRS; p++) {
+          let chA = PAIRS[p][0];
+          let chB = PAIRS[p][1];
+          for (let slot = 0; slot < NUM_SLOTS; slot++) {
+              let val = Math.abs(s.slow_gamma_slots[chA][slot] * s.fast_gamma_slots[chB][slot]);
+              s.slot_ciplv[p][slot] = s.slot_ciplv[p][slot] * 0.9 + val * 0.1;
+          }
+      }
     } else if (s.wmMode === 'aac_envelope') {
       // Scientific Basis: Amplitude-Amplitude Coupling (AAC)
       // DOI: 10.1073/pnas.1006728107 (Shirvalkar et al., 2010)
@@ -192,12 +206,37 @@ export function processEEGData(s: any, time: number, takeDamage: () => void) {
       fast_vec_y = ELECTRODES[best_c].y;
       let mean_val = sum_val / 8;
       current_sharpness = mean_val > 0 ? ((max_val / mean_val) - 1) / 7 : 0;
+      
+      // Calculate slot_ciplv for visualization (Mandala)
+      for (let p = 0; p < NUM_PAIRS; p++) {
+          let chA = PAIRS[p][0];
+          let chB = PAIRS[p][1];
+          for (let slot = 0; slot < NUM_SLOTS; slot++) {
+              let val = Math.abs(s.reArr[chA][GAMMA_BIN] * s.reArr[chB][GAMMA_BIN]) / 1000.0;
+              s.slot_ciplv[p][slot] = s.slot_ciplv[p][slot] * 0.9 + val * 0.1;
+          }
+      }
     }
 
     // БЕЗ СГЛАЖИВАНИЯ (MAX REALTIME)
     s.sharpness = current_sharpness;
     s.smooth_focus = global_intent;
     s.intent_angle = Math.atan2(fast_vec_y, fast_vec_x);
+
+    // Расчет Глубины Рефлексии (Reflection Depth)
+    let active_slots = 0;
+    let symmetry_sum = 0;
+    for(let c=0; c<8; c++) {
+        let past = Math.abs(s.slow_gamma_slots[c][1] + s.slow_gamma_slots[c][2] + s.slow_gamma_slots[c][3]);
+        let future = Math.abs(s.fast_gamma_slots[c][4] + s.fast_gamma_slots[c][5] + s.fast_gamma_slots[c][6]);
+        if (past > 0.1 || future > 0.1) active_slots++;
+        let total = past + future;
+        if (total > 0) {
+            let sym = 1.0 - Math.abs(past - future) / total;
+            symmetry_sum += sym;
+        }
+    }
+    s.reflection_depth = (active_slots / 8) * 3.0 + (active_slots > 0 ? (symmetry_sum / active_slots) * 4.0 : 0);
 
     // 3. МЕХАНИКА ИГРЫ: РЫВОК (DASH)
     if (s.wmMode === 'dash' && global_intent > s.dashThr && s.dashCooldown <= 0) {
@@ -276,7 +315,7 @@ export function processEEGData(s: any, time: number, takeDamage: () => void) {
     }
 }
 
-export function updatePhysics(s: any, invertDevice: boolean) {
+export function updatePhysics(s: any, invertDevice: boolean, takeDamage: () => void) {
     let out_vx = invertDevice ? -s.target_vx : s.target_vx;
     let out_vy = invertDevice ? -s.target_vy : s.target_vy;
 
@@ -302,7 +341,11 @@ export function updatePhysics(s: any, invertDevice: boolean) {
         }));
     }
 
-    s.player.angle += s.ctrl.torque * activeBoost * 0.5;
+    if (s.cameraView === 'world_fixed') {
+        s.player.angle = 0;
+    } else {
+        s.player.angle += s.ctrl.torque * activeBoost * 0.5;
+    }
     
     let forwardSpeed = -s.ctrl.moveY * activeBoost * 0.2;
     let strafeSpeed = s.ctrl.moveX * activeBoost * 0.2;
@@ -332,8 +375,80 @@ export function updatePhysics(s: any, invertDevice: boolean) {
     let sdx = targetDx / steps;
     let sdy = targetDy / steps;
 
-    for(let i=0; i<steps; i++) {
-        if(!hit(s.player.x + sdx + Math.sign(sdx)*0.2, s.player.y)) s.player.x += sdx; 
-        if(!hit(s.player.x, s.player.y + sdy + Math.sign(sdy)*0.2)) s.player.y += sdy; 
+    if (s.demoMode === 'maze') {
+        for(let i=0; i<steps; i++) {
+            if(!hit(s.player.x + sdx + Math.sign(sdx)*0.2, s.player.y)) s.player.x += sdx; 
+            if(!hit(s.player.x, s.player.y + sdy + Math.sign(sdy)*0.2)) s.player.y += sdy; 
+        }
+    } else if (s.demoMode === 'cursor') {
+        s.demoState.cursorActual += Math.sqrt(targetDx**2 + targetDy**2);
+        s.player.x += targetDx;
+        s.player.y += targetDy;
+        // Clamp to a virtual screen
+        s.player.x = Math.max(-5, Math.min(5, s.player.x));
+        s.player.y = Math.max(-5, Math.min(5, s.player.y));
+        
+        // Target logic
+        if (s.demoTargets.length === 0) {
+            let nx = (Math.random() - 0.5) * 8;
+            let ny = (Math.random() - 0.5) * 8;
+            s.demoTargets.push({ x: nx, y: ny });
+            s.demoState.cursorIdeal = Math.sqrt((s.player.x - nx)**2 + (s.player.y - ny)**2);
+            s.demoState.cursorActual = 0;
+        }
+        let t = s.demoTargets[0];
+        let d = Math.sqrt((s.player.x - t.x)**2 + (s.player.y - t.y)**2);
+        if (d < 0.5) {
+            s.demoTargets = [];
+            let efficiency = s.demoState.cursorIdeal / Math.max(0.1, s.demoState.cursorActual);
+            s.scorePenalty -= 100 * efficiency; // Increase score based on efficiency
+        }
+    } else if (s.demoMode === 'car') {
+        // Auto forward, steer with X
+        let carSpeed = 0.05 + s.smooth_focus * 0.15;
+        s.player.y -= carSpeed;
+        s.player.x += s.ctrl.moveX * 0.15;
+        s.player.x = Math.max(-2.5, Math.min(2.5, s.player.x)); // Road bounds
+        
+        // Obstacles
+        if (Math.random() < 0.02 && s.demoState.obstacles.length < 3) {
+            s.demoState.obstacles.push({ x: (Math.random() - 0.5) * 4, y: s.player.y - 10, passed: false });
+        }
+        for (let obs of s.demoState.obstacles) {
+            if (!obs.passed && s.player.y < obs.y) {
+                obs.passed = true;
+                s.scorePenalty -= 50; // Dodged!
+            }
+            if (Math.abs(s.player.x - obs.x) < 0.5 && Math.abs(s.player.y - obs.y) < 0.5) {
+                takeDamage();
+                obs.y += 10; // Move it away so it doesn't hit repeatedly
+            }
+        }
+        s.demoState.obstacles = s.demoState.obstacles.filter((o: any) => o.y < s.player.y + 5);
+
+    } else if (s.demoMode === 'drone') {
+        s.player.x += targetDx;
+        s.player.y += targetDy;
+        
+        // Spherical world / wrap-around for drone
+        const WORLD_SIZE = 15;
+        if (s.player.x > WORLD_SIZE) s.player.x = -WORLD_SIZE;
+        if (s.player.x < -WORLD_SIZE) s.player.x = WORLD_SIZE;
+        if (s.player.y > WORLD_SIZE) s.player.y = -WORLD_SIZE;
+        if (s.player.y < -WORLD_SIZE) s.player.y = WORLD_SIZE;
+
+        s.player.altitude = s.smooth_focus; // Use focus for altitude
+        
+        // Rings
+        if (s.demoState.rings.length === 0) {
+            s.demoState.rings.push({ x: (Math.random() - 0.5) * 6, y: (Math.random() - 0.5) * 6, alt: 0.2 + Math.random() * 0.6 });
+        }
+        let ring = s.demoState.rings[0];
+        let dxy = Math.sqrt((s.player.x - ring.x)**2 + (s.player.y - ring.y)**2);
+        let dAlt = Math.abs(s.player.altitude - ring.alt);
+        if (dxy < 0.5 && dAlt < 0.2) {
+            s.demoState.rings.shift();
+            s.scorePenalty -= 200;
+        }
     }
 }

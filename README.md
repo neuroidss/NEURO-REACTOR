@@ -84,9 +84,43 @@ Neuro-Reactor supports 3 mathematical modes for decoding spatial attention and w
    - **Mechanism:** A simpler correlation metric where the overall power of Gamma fluctuates with the power of Theta, indicating general cognitive load and attention.
    - **DOI:** 10.1073/pnas.1006728107 (Shirvalkar et al., 2010)
 
-## Synaptic Persistence (Hebbian Learning)
-The game features a "Synaptic Stability" meter. Holding a consistent vector triggers simulated Spike-Timing-Dependent Plasticity (STDP), giving the avatar a speed boost.
-- **DOI:** 10.1523/JNEUROSCI.18-24-10464.1998 (Bi & Poo, 1998 - Synaptic plasticity)
+## Camera & View Modes
+Neuro-Reactor supports multiple camera perspectives to suit different experimental setups and multiplayer scenarios:
+
+1. **FIRST PERSON:** The camera is attached to the player. The world (maze/track) rotates around the player, who always faces "up" on the screen. Best for immersive single-player navigation.
+2. **WORLD (ROTATE):** The world is fixed in place. The player's avatar rotates and moves relative to its own rotation. Useful for observing the avatar's orientation in a fixed environment.
+3. **WORLD (FIXED UP):** The world is fixed, and the player's avatar is locked to always face "up". Movement is translated directly to screen coordinates (True Absolute mode is forced). Ideal for multi-user arenas and cursor-control tasks.
+
+## Multiplayer & Multi-Hemisphere Support
+You can add multiple users to the arena simultaneously. This is particularly useful for:
+- **Multi-Hemisphere Control:** Connect two separate FreeEEG8-alpha modules (one to each hemisphere) and control two independent avatars simultaneously to study inter-hemispheric cooperation.
+- **Competitive/Cooperative BCI:** Connect multiple users via BLE to the same arena.
+- Use the **+ ADD USER (BLE)** button to connect a new hardware node, or **+ ADD USER (SIM)** to add a simulated node for testing.
+
+## Educational Demo Modes (Benchmarks)
+Neuro-Reactor includes several simplified modes designed for education, demonstrations, and specific cognitive benchmarking:
+
+- **BrainCursor (★☆☆☆☆):** A simple 2D cursor control task. The user must navigate a cursor to a target on a blank screen. Benchmarks pure directional intent and efficiency (ideal path vs. actual path).
+- **BrainMaze (★★☆☆☆):** The standard extraction-looter maze. Benchmarks sustained goal-directed navigation and spatial memory.
+- **BrainDrone (★★☆☆☆):** A 3D-style drone flight simulation. The user must steer left/right and control altitude (via focus/working memory) to fly through rings.
+- **BrainCar (★★☆☆☆):** An endless runner. The car moves forward automatically; the user must steer left/right to dodge obstacles.
+
+## Neuro ADC Test Bench
+Included in the `public/testbench.html` is a dedicated tool for hardware validation and scientific calibration (e.g., for MSU Biofac).
+- **Hardware Noise Validation:** Run the "NOISE (Shorted)" test to verify the baseline RMS noise of the ADC (should be < 2µV).
+- **DC Signal Test:** Verify the internal test signal and scaling.
+- **PGA & SPS Control:** Dynamically adjust the Programmable Gain Amplifier (PGA) and Samples Per Second (SPS) to optimize signal quality or prevent saturation.
+- **Register Verification:** The test bench reads back SPI registers after writing to ensure the hardware state matches the software configuration.
+- **Real-time Scope & FFT:** Visualize the raw waveforms and frequency spectrum directly from the hardware.
+
+## Debug Overlays & Neurofeedback
+The UI includes toggles for advanced debug overlays, separating scientific analysis from pure neurofeedback:
+
+- **Raw Signals:** Displays the raw EEG waveforms for all 8 channels.
+- **ciPLV Connectivity:** Visualizes the raw Phase-Locking Value network between all electrode pairs.
+- **PAC Histogram:** Shows the distribution of Slow and Fast Gamma across Theta phase slots.
+- **Direction Vector:** Displays the raw calculated movement vector before smoothing.
+*Note: Debug overlays are intended for scientific validation and setup. For active neurofeedback training, rely on the in-game audio and the Theta-Gamma "Mandala" rendered directly around the player's avatar.*
 
 ## How to Test
 1. Click **CONNECT BLE** to pair your 8-channel ultra-high-density local EEG module (FreeEEG8-alpha micro-array).

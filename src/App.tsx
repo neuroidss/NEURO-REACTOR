@@ -36,6 +36,7 @@ export default function App() {
   const scoreRef = useRef(null);
   const floorRef = useRef(null);
   const botsScoreRef = useRef(null);
+  const reflectionRef = useRef(null);
   const synapseFillRef = useRef(null);
   const focusFillRef = useRef(null);
   const pointerRef = useRef(null);
@@ -48,6 +49,7 @@ export default function App() {
   const [isVR, setIsVR] = useState(false);
   const [moveModeState, setMoveModeState] = useState('crystal');
   const [wmModeState, setWmModeState] = useState('pac_pairs');
+  const [cameraViewState, setCameraViewState] = useState('first_person');
 
   // Game State
   const state = useRef({
@@ -85,9 +87,21 @@ export default function App() {
     floor: 1,
     moveMode: 'crystal',
     wmMode: 'pac_pairs',
+    cameraView: 'first_person', // 'first_person', 'world'
     dashCooldown: 0,
     dashThr: 0.8,
-    bots: [] as any[]
+    bots: [] as any[],
+    reflection_depth: 0,
+    demoMode: 'maze', // 'cursor', 'maze', 'drone', 'car'
+    debug: {
+      showRawSignals: false,
+      showCiPLV: false,
+      showPAC: false,
+      showDirectionVector: false
+    },
+    demoTargets: [] as any[],
+    demoState: { cursorIdeal: 0, cursorActual: 0, rings: [], obstacles: [] },
+    extraUsers: [] as any[]
   });
 
   useEffect(() => {
@@ -123,19 +137,39 @@ export default function App() {
     }
 
     processEEGData(s, time, takeDamage);
-    updatePhysics(s, invertDevice);
+    updatePhysics(s, invertDevice, takeDamage);
+
+    for (let u of s.extraUsers) {
+        u.skillLevel = s.skillLevel;
+        u.holoThr = s.holoThr;
+        u.moveMode = s.moveMode;
+        u.wmMode = s.wmMode;
+        u.demoMode = s.demoMode;
+        u.cameraView = s.cameraView;
+        processEEGData(u, time, () => {});
+        updatePhysics(u, invertDevice, () => {});
+    }
 
     for (let bot of s.bots) {
         bot.update(time, s.maze);
     }
 
-    let wastedRatio = Math.max(1, s.effortDist / s.maze.optimalDist);
-    let neScore = (1000 - 144.27 * Math.log(wastedRatio)) - s.scorePenalty;
+    let neScore = 0;
+    if (s.demoMode === 'maze') {
+        let wastedRatio = Math.max(1, s.effortDist / s.maze.optimalDist);
+        neScore = (1000 - 144.27 * Math.log(wastedRatio)) - s.scorePenalty;
+    } else {
+        neScore = 1000 - s.scorePenalty; // scorePenalty goes negative to add points
+    }
     if (neScore < 0) neScore = 0;
 
     if (scoreRef.current) {
       scoreRef.current.innerText = neScore.toFixed(1);
       scoreRef.current.style.color = neScore > 900 ? '#0f0' : (neScore > 700 ? '#ff0' : '#f00');
+    }
+
+    if (reflectionRef.current) {
+      reflectionRef.current.innerText = s.reflection_depth.toFixed(1);
     }
 
     if (botsScoreRef.current && s.bots.length > 0) {
@@ -147,18 +181,24 @@ export default function App() {
       ).join('');
     }
 
-    if (s.maze.grid[Math.floor(s.player.y)][Math.floor(s.player.x)] === 2) {
-      s.scoresHistory.push(neScore);
-      s.floor += 1;
-      if (floorRef.current) floorRef.current.innerText = s.floor;
-      s.maze = new Maze(11);
-      s.player.x = 1.5;
-      s.player.y = 1.5;
-      s.effortDist = 0;
-      s.scorePenalty = 0;
-      for (let bot of s.bots) {
-        bot.x = 1.5 + (Math.random() - 0.5);
-        bot.y = 1.5 + (Math.random() - 0.5);
+    if (s.demoMode === 'maze') {
+      let py = Math.floor(s.player.y);
+      let px = Math.floor(s.player.x);
+      if (py >= 0 && py < s.maze.dim && px >= 0 && px < s.maze.dim) {
+        if (s.maze.grid[py][px] === 2) {
+          s.scoresHistory.push(neScore);
+          s.floor += 1;
+          if (floorRef.current) floorRef.current.innerText = s.floor;
+          s.maze = new Maze(11);
+          s.player.x = 1.5;
+          s.player.y = 1.5;
+          s.effortDist = 0;
+          s.scorePenalty = 0;
+          for (let bot of s.bots) {
+            bot.x = 1.5 + (Math.random() - 0.5);
+            bot.y = 1.5 + (Math.random() - 0.5);
+          }
+        }
       }
     }
 
@@ -194,6 +234,47 @@ export default function App() {
     }
 
     reqRef.current = requestAnimationFrame(gameLoop);
+  };
+
+  const createExtraUser = (id: number, color: string) => {
+    return {
+      id,
+      color,
+      skillLevel: 0.05,
+      holoThr: 0.50,
+      synapticPersistence: 0,
+      smooth_focus: 0,
+      scorePenalty: 0,
+      effortDist: 0,
+      lastTargetX: 0,
+      lastTargetY: 0,
+      ctrl: { moveX: 0, moveY: 0, torque: 0 },
+      player: { x: 1.5 + (Math.random() - 0.5), y: 1.5 + (Math.random() - 0.5), angle: 0, altitude: 0 },
+      maze: state.current.maze, // Share the same maze
+      lastEegProcess: performance.now(),
+      target_vx: 0,
+      target_vy: 0,
+      target_tq: 0,
+      eegBuffer: Array.from({ length: 8 }, () => new Float32Array(BUF_SIZE)),
+      reArr: Array.from({ length: 8 }, () => new Float32Array(BUF_SIZE)),
+      imArr: Array.from({ length: 8 }, () => new Float32Array(BUF_SIZE)),
+      centered: Array.from({ length: 8 }, () => new Float32Array(BUF_SIZE)),
+      electrodePressure: new Float32Array(8),
+      slow_gamma_slots: Array.from({ length: 8 }, () => new Float32Array(NUM_SLOTS)),
+      fast_gamma_slots: Array.from({ length: 8 }, () => new Float32Array(NUM_SLOTS)),
+      slot_re: Array.from({ length: 28 }, () => new Float32Array(NUM_SLOTS)),
+      slot_im: Array.from({ length: 28 }, () => new Float32Array(NUM_SLOTS)),
+      slot_ciplv: Array.from({ length: 28 }, () => new Float32Array(NUM_SLOTS)),
+      intent_angle: 0,
+      moveMode: state.current.moveMode,
+      wmMode: state.current.wmMode,
+      dashCooldown: 0,
+      dashThr: 0.8,
+      demoMode: state.current.demoMode,
+      cameraView: state.current.cameraView,
+      demoTargets: [],
+      demoState: { cursorIdeal: 0, cursorActual: 0, rings: [], obstacles: [] }
+    };
   };
 
   const startSimulation = () => {
@@ -263,6 +344,15 @@ export default function App() {
         }
         
         state.current.eegBuffer[i][255] = val;
+        
+        for (let u of state.current.extraUsers) {
+            if (u.isSim) {
+                u.eegBuffer[i].set(u.eegBuffer[i].subarray(1));
+                let uval = val + (Math.random() - 0.5) * 10; // Add noise
+                if (Math.random() < 0.05) uval += Math.sin(t * 20 * Math.PI * 2 + u.id) * 30; // Random bursts
+                u.eegBuffer[i][255] = uval;
+            }
+        }
       }
     }, 4); // ~250Hz
 
@@ -351,6 +441,13 @@ export default function App() {
           <div ref={focusFillRef} className="h-full bg-[#f0f] w-0 shadow-[0_0_10px_#f0f] transition-all duration-100"></div>
         </div>
 
+        <div className="mt-4 pt-4 border-t-2 border-dashed border-[#f0f]">
+          <div className="text-xs mb-1 flex justify-between items-center uppercase text-[#ff0]">
+            REFLECTION DEPTH: <span ref={reflectionRef} className="text-white text-base font-bold">0.0</span>
+          </div>
+          <div className="text-[10px] text-[#888] mt-1">PAC Symmetry & Slots</div>
+        </div>
+
         <div className="w-[100px] h-[100px] border border-[#444] rounded-full my-2 mx-auto relative bg-[#080808]">
           <div ref={pointerRef} className="w-2 h-2 bg-white rounded-full absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 shadow-[0_0_10px_#fff] z-10"></div>
           {ELECTRODES.map((e, i) => (
@@ -414,6 +511,14 @@ export default function App() {
         }} className={`w-full mt-2 py-2 px-4 border-2 rounded-lg font-mono transition-colors text-xs ${wmModeState === 'pac_pairs' ? 'bg-black text-[#0f0] border-[#0f0] shadow-[0_0_10px_#0f0]' : 'bg-black text-[#f0f] border-[#f0f] shadow-[0_0_10px_#f0f]'}`}>
           WM MODE: {wmModeState === 'pac_pairs' ? 'PAC PAIRS (CRYSTAL)' : wmModeState === 'pac_flow' ? 'PAC FLOW (ASYMMETRY)' : wmModeState === 'aac_envelope' ? 'AAC ENVELOPE' : 'DASH'}
         </button>
+        <button onClick={() => { 
+          const modes = ['first_person', 'world_rotate', 'world_fixed'];
+          const newView = modes[(modes.indexOf(state.current.cameraView) + 1) % modes.length];
+          state.current.cameraView = newView;
+          setCameraViewState(newView);
+        }} className={`w-full mt-2 py-2 px-4 border-2 rounded-lg font-mono transition-colors text-xs ${cameraViewState.startsWith('world') ? 'bg-black text-[#0f0] border-[#0f0] shadow-[0_0_10px_#0f0]' : 'bg-black text-[#f0f] border-[#f0f] shadow-[0_0_10px_#f0f]'}`}>
+          CAMERA: {cameraViewState === 'world_fixed' ? 'WORLD (FIXED UP)' : cameraViewState === 'world_rotate' ? 'WORLD (ROTATE)' : 'FIRST PERSON'}
+        </button>
         <button onClick={() => {
           const colors = ['#0ff', '#f0f', '#ff0', '#0f0'];
           const id = state.current.bots.length;
@@ -422,9 +527,88 @@ export default function App() {
         }} className="w-full mt-2 py-2 px-4 bg-black text-[#ff0] border-2 border-[#ff0] rounded-lg font-mono shadow-[0_0_10px_#ff0] active:bg-[#ff0] active:text-black">
           + ADD BOT
         </button>
+        <button onClick={async () => {
+          const colors = ['#0ff', '#f0f', '#ff0', '#0f0'];
+          const id = state.current.extraUsers.length + 1;
+          const newUser = createExtraUser(id, colors[id % colors.length]);
+          
+          try {
+            const device = await navigator.bluetooth.requestDevice({ filters: [{ services: ["4fafc201-1fb5-459e-8fcc-c5c9c331914b"] }] });
+            const server = await device.gatt.connect();
+            const service = await server.getPrimaryService("4fafc201-1fb5-459e-8fcc-c5c9c331914b");
+            const dataChar = await service.getCharacteristic("beb5483e-36e1-4688-b7f5-ea07361b26a8");
+            const cmdChar = await service.getCharacteristic("c0de0001-36e1-4688-b7f5-ea07361b26a8");
+
+            await cmdChar.writeValue(new Uint8Array([0x04, 0x22, 0x22]));
+            await new Promise(r => setTimeout(r, 100));
+            await cmdChar.writeValue(new Uint8Array([0x05, 0x22, 0x22]));
+
+            await dataChar.startNotifications();
+            dataChar.addEventListener('characteristicvaluechanged', (e) => {
+              let b = new Uint8Array(e.target.value.buffer);
+              if (b[0] === 0xA0) {
+                for (let i = 0; i < 8; i++) {
+                  let v = (b[2 + i * 3] << 16) | (b[3 + i * 3] << 8) | b[4 + i * 3];
+                  if (v & 0x800000) v -= 0x1000000;
+                  newUser.eegBuffer[i].set(newUser.eegBuffer[i].subarray(1));
+                  newUser.eegBuffer[i][255] = v * UV_SCALE;
+                }
+              }
+            });
+            state.current.extraUsers.push(newUser);
+          } catch (e) {
+            alert("Ошибка BLE: " + e);
+          }
+        }} className="w-full mt-2 py-2 px-4 bg-black text-[#0ff] border-2 border-[#0ff] rounded-lg font-mono shadow-[0_0_10px_#0ff] active:bg-[#0ff] active:text-black">
+          + ADD USER (BLE)
+        </button>
+        <button onClick={() => {
+          const colors = ['#0ff', '#f0f', '#ff0', '#0f0'];
+          const id = state.current.extraUsers.length + 1;
+          const newUser = createExtraUser(id, colors[id % colors.length]);
+          newUser.isSim = true;
+          state.current.extraUsers.push(newUser);
+        }} className="w-full mt-2 py-2 px-4 bg-black text-[#888] border-2 border-[#555] rounded-lg font-mono active:bg-[#555] active:text-black">
+          + ADD USER (SIM)
+        </button>
         <button onClick={() => setInvertDevice(!invertDevice)} className={`w-full mt-2 py-2 px-4 border-2 rounded-lg font-mono transition-colors ${invertDevice ? 'bg-black text-[#ff0] border-[#ff0] shadow-[0_0_10px_#ff0]' : 'bg-black text-[#0f0] border-[#0f0] shadow-[0_0_10px_#0f0]'}`}>
           USB CABLE: {invertDevice ? 'BOTTOM' : 'TOP'}
         </button>
+        <div className="mt-4 pt-4 border-t-2 border-dashed border-[#0ff]">
+          <div className="text-[10px] mb-2 text-[#0ff] font-bold">DEMO MODE (EDUCATION)</div>
+          <select 
+            className="w-full bg-black text-[#0f0] border border-[#0f0] rounded p-1 text-xs mb-2 outline-none"
+            onChange={(e) => {
+              state.current.demoMode = e.target.value;
+              // Reset player position for new mode
+              state.current.player.x = 1.5;
+              state.current.player.y = 1.5;
+              state.current.player.angle = 0;
+              state.current.demoTargets = [];
+            }}
+            defaultValue="maze"
+          >
+            <option value="cursor">BrainCursor (★☆☆☆☆)</option>
+            <option value="maze">BrainMaze (★★☆☆☆)</option>
+            <option value="drone">BrainDrone (★★☆☆☆)</option>
+            <option value="car">BrainCar (★★☆☆☆)</option>
+          </select>
+
+          <div className="text-[10px] mb-2 text-[#0ff] font-bold mt-4">DEBUG OVERLAYS</div>
+          {['showRawSignals', 'showCiPLV', 'showPAC', 'showDirectionVector'].map(flag => (
+            <label key={flag} className="flex items-center space-x-2 text-xs mb-1 cursor-pointer">
+              <input 
+                type="checkbox" 
+                className="accent-[#0f0]"
+                onChange={(e) => {
+                  state.current.debug[flag] = e.target.checked;
+                }}
+              />
+              <span>{flag.replace('show', '')}</span>
+            </label>
+          ))}
+        </div>
+
         <button onClick={toggleVR} className="w-full mt-4 py-2 px-4 bg-black text-[#f0f] border-2 border-[#f0f] rounded-lg font-mono shadow-[0_0_10px_#f0f] active:bg-[#f0f] active:text-black">
           ENTER VR MODE
         </button>
